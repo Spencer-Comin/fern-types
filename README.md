@@ -20,3 +20,6 @@ An exploration of compiling a dependently typed call-by-push-value calculus
 
 ### **Q**: What is fern?
 **A**: A cute name.
+
+### **Q**: Why isn't this in Rocq or Agda?
+**A**: I'm not that smart.
