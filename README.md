@@ -7,7 +7,7 @@ An exploration of compiling a dependently typed call-by-push-value calculus
 **A**: So far, yes. If I get around to it maybe I'll add a front and back end.
 
 ### **Q**: Why doesn't this build?
-**A**: I haven't got the tests up to date with the type checker yet?
+**A**: I haven't got the tests up to date with the type checker yet.
 
 ### **Q**: How are the tests not up to date if the tests and type checker were introduced in the same commit?
 **A**: This project didn't emerge ex nihilo (nothing ever does), it came from a scratch pile of ideas sitting on my laptop. I didn't want to subject the public to the entirety of my half baked ideas and questionable commit history.
