@@ -243,6 +243,11 @@ module Core = struct
     | Add of neutral_value * weak_value
     | Do of eff
 
+  let empty_env = {
+    handlers = SMap.empty;
+    values = SMap.empty;
+  }
+
   exception Stuck
 
   let rec apply f vs =
@@ -530,7 +535,7 @@ module Type = struct
     {
       ty_ctx = SMap.empty;
       handler_ty_ctx = SMap.empty;
-      env = {values = SMap.empty; handlers = SMap.empty};
+      env = Core.empty_env;
       z3_ctx = DeptyZ3.mk_context effect_list;
     }
 
