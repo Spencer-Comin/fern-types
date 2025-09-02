@@ -1,0 +1,4 @@
+(library
+ (name fern_types)
+ (modules depty deptyZ3)
+ (libraries fmt z3 zarith))

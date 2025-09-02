@@ -1,0 +1,4 @@
+(executable
+ (public_name fern_types)
+ (name main)
+ (libraries fern_types))
