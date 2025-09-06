@@ -1,7 +1,5 @@
 open Fern_types.Depty
-open Syntax
 
-let reduce c = Core.reduce SMap.empty c |> Core.quote_comp
 let stlc_id ty = Lam (["x", ty], Return (Var "x"))
 
 let pi_id =
@@ -9,10 +7,6 @@ let pi_id =
 
 let two = Int 2
 let apply f xs = reduce (App (f, xs))
-
-let equal_comp a b =
-  let env = SMap.empty in
-  Core.equal_comp (Core.reduce env a) (Core.reduce env b)
 
 let comp = Alcotest.testable Pretty.pp_comp equal_comp
 
