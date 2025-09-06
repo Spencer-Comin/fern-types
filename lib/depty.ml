@@ -88,13 +88,6 @@ module Syntax = struct
       let open Fmt in
       pf ppf "%a%a%a" pp_a a pp_b b pp_c c
 
-    let quad (pp_a : 'a Fmt.t) (pp_b : 'b Fmt.t)
-        (pp_c : 'c Fmt.t) (pp_d : 'd Fmt.t) :
-        ('a * 'b * 'c * 'd) Fmt.t =
-     fun ppf (a, b, c, d) ->
-      let open Fmt in
-      pf ppf "%a%a%a%a" pp_a a pp_b b pp_c c pp_d d
-
     let of_str s : unit Fmt.t =
      fun ppf () ->
       let open Fmt in
@@ -200,8 +193,7 @@ end
 module SMap = Map.Make (String)
 
 module Core = struct
-  type weak_comp_ty = weak_comp
-  and weak_value_ty = weak_value
+  type weak_value_ty = weak_value
 
   and env = {
     values: weak_value SMap.t;
@@ -1142,3 +1134,53 @@ module Type = struct
 end
 
 let hello = "hello"
+
+include Syntax
+let reduce c =
+  Core.reduce Core.empty_env c |> Core.quote_comp
+
+type type_system = {
+  check_type_comp: comp_ty * fx -> comp -> bool;
+  infer_type_comp: comp -> comp_ty * fx;
+  check_type_value: value_ty -> value -> bool;
+  infer_type_value: value -> value_ty;
+}
+
+let mk_type_system all_fx =
+
+  let check_type_comp (ty, fx) c =
+    let ctx = Type.mk_context all_fx in
+    let fx = DeptyZ3.mk_const_fx ctx.z3_ctx fx in
+    let ty = Type.from_syntax_comp ctx ty in
+    Type.check_comp ctx ty fx c
+  in
+
+  let infer_type_comp c =
+    let ctx = Type.mk_context all_fx in
+    let ty, fx = Type.infer_comp ctx c in
+    Type.to_syntax_comp ctx ty, DeptyZ3.fx_to_string_list ctx.z3_ctx fx
+  in
+
+  let check_type_value v ty =
+    let ctx = Type.mk_context all_fx in
+    let ty = Type.from_syntax_value ctx ty in
+    Type.check_value ctx ty v
+  in
+
+  let infer_type_value v =
+    let ctx = Type.mk_context all_fx in
+    let ty = Type.infer_value ctx v in
+    Type.to_syntax_value ctx ty
+  in
+
+  {check_type_comp; infer_type_comp; check_type_value; infer_type_value}
+
+let equal_comp a b =
+  let a = Core.reduce Core.empty_env a in
+  let b = Core.reduce Core.empty_env b in
+  Core.equal_comp a b
+
+let equal_value u v =
+  let u = Core.resolve Core.empty_env u in
+  let v = Core.resolve Core.empty_env v in
+  Core.equal_value u v
