@@ -37,3 +37,6 @@ _opam/
 
 # MacOS generated files
 .DS_Store
+
+# VSCode generated files
+.vscode
