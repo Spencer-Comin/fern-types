@@ -60,10 +60,11 @@ let test_check_refl =
   test_check_value Refl (Eq (IntTy, Int 1, Int 1))
 
 let test_check_symbol =
-  test_check_value (Symbol "a_symbol") (SymbolSet (SymbolSet.singleton "a_symbol"))
+  test_check_value (Symbol "a_symbol")
+    (SymbolSet (SymbolSet.singleton "a_symbol"))
 
 let test_check_symbolset =
-  test_check_value (SymbolSet (SymbolSet.empty)) (ValUniv 1)
+  test_check_value (SymbolSet SymbolSet.empty) (ValUniv 1)
 
 let effects =
   let eq xs ys =
@@ -124,31 +125,45 @@ let test_add = test_infer_comp (Add (Int 1, Int 2)) (F IntTy, [])
 
 let tests =
   let open Alcotest in
-  List.map (fun (n, t) -> test_case n `Quick t)
+  let f tests =
+    List.map (fun (n, t) -> test_case n `Quick t) tests
+  in
   [
-    "Int", test_infer_int;
-    "IntTy", test_infer_intty;
-    "ValUniv 1", test_infer_val_univ;
-    "ValUniv 1", test_check_val_univ;
-    "CompUniv 1", test_comp_univ;
-    "U F", test_check_u;
-    "Sigma", test_check_sigma;
-    "Eq", test_check_eq;
-    "Thunk", test_check_thunk;
-    "Pair", test_check_pair;
-    "Int", test_check_int;
-    "IntTy", test_check_intty;
-    "Refl", test_check_refl;
-    "Symbol", test_check_symbol;
-    "SymbolSet", test_check_symbolset;
-    "Handle", test_handler;
-    "F IntTy", test_f;
-    "F ValUniv", test_f_univ;
-    "Pi", test_pi;
-    "Force", test_force;
-    "Lam", test_lam;
-    "App", test_app;
-    "Let", test_let;
-    "Return", test_return;
-    "Add", test_add;
+    ( "infer value",
+      f
+        [
+          "Int", test_infer_int;
+          "IntTy", test_infer_intty;
+          "ValUniv 1", test_infer_val_univ;
+        ] );
+    ( "check value",
+      f
+        [
+          "ValUniv 1", test_check_val_univ;
+          "U F", test_check_u;
+          "Sigma", test_check_sigma;
+          "Eq", test_check_eq;
+          "Thunk", test_check_thunk;
+          "Pair", test_check_pair;
+          "Int", test_check_int;
+          "IntTy", test_check_intty;
+          "Refl", test_check_refl;
+          "Symbol", test_check_symbol;
+          "SymbolSet", test_check_symbolset;
+        ] );
+    ( "infer comp",
+      f
+        [
+          "CompUniv 1", test_comp_univ;
+          "Handle", test_handler;
+          "F IntTy", test_f;
+          "F ValUniv", test_f_univ;
+          "Pi", test_pi;
+          "Force", test_force;
+          "Lam", test_lam;
+          "App", test_app;
+          "Let", test_let;
+          "Return", test_return;
+          "Add", test_add;
+        ] );
   ]

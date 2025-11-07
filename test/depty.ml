@@ -1,8 +1,4 @@
 open Alcotest
 
 let () =
-  run "Depty"
-    [
-      "reduce", Depty_tests.Reduce.tests;
-      "typecheck", Depty_tests.Type.tests;
-    ]
+  run "Depty" (Depty_tests.Reduce.tests @ Depty_tests.Type.tests)

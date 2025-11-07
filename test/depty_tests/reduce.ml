@@ -87,15 +87,18 @@ let test_apply_handler () =
 let tests =
   let open Alcotest in
   [
-    test_case "STLC id" `Quick test_stlc_id;
-    test_case "Pi id" `Quick test_pi_id;
-    test_case "sum pair" `Quick test_recsigma;
-    test_case "receq refl" `Quick test_receq;
-    test_case "thunked return" `Quick test_force;
-    test_case "let" `Quick test_let;
-    test_case "dlet" `Quick test_dlet;
-    test_case "let add" `Quick test_let_add;
-    test_case "id alpha eq" `Quick test_alpha_eq;
-    test_case "simple handler" `Quick test_simple_handler;
-    test_case "apply handler" `Quick test_apply_handler;
+    ( "reduce",
+      [
+        test_case "STLC id" `Quick test_stlc_id;
+        test_case "Pi id" `Quick test_pi_id;
+        test_case "sum pair" `Quick test_recsigma;
+        test_case "receq refl" `Quick test_receq;
+        test_case "thunked return" `Quick test_force;
+        test_case "let" `Quick test_let;
+        test_case "dlet" `Quick test_dlet;
+        test_case "let add" `Quick test_let_add;
+        test_case "id alpha eq" `Quick test_alpha_eq;
+        test_case "simple handler" `Quick test_simple_handler;
+        test_case "apply handler" `Quick test_apply_handler;
+      ] );
   ]
