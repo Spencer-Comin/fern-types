@@ -7,7 +7,6 @@ let pi_id =
 
 let two = Int 2
 let apply f xs = reduce (App (f, xs))
-
 let comp = Alcotest.testable Pretty.pp_comp equal_comp
 
 let test_stlc_id () =
@@ -73,6 +72,18 @@ let test_alpha_eq () =
   let b = Lam (["b", IntTy], Return (Var "b")) in
   Alcotest.(check comp) "alpha eq id" a b
 
+let test_simple_handler () =
+  let handler = Return (Int 5) in
+  let expr = Handle ("foo", handler, Do "foo") |> reduce in
+  Alcotest.(check comp) "simple handler" expr handler
+
+let test_apply_handler () =
+  let expr =
+    Handle ("foo", stlc_id IntTy, App (Do "foo", [Int 5]))
+    |> reduce
+  in
+  Alcotest.(check comp) "apply handler" expr (Return (Int 5))
+
 let tests =
   let open Alcotest in
   [
@@ -85,4 +96,6 @@ let tests =
     test_case "dlet" `Quick test_dlet;
     test_case "let add" `Quick test_let_add;
     test_case "id alpha eq" `Quick test_alpha_eq;
+    test_case "simple handler" `Quick test_simple_handler;
+    test_case "apply handler" `Quick test_apply_handler;
   ]
