@@ -7,7 +7,8 @@
    - control effects
    - make Add a function
    - symbol set unification
-   - set ops on SymbolSet *)
+   - set ops on SymbolSet
+   - better details in type errors *)
 
 module SymbolSet = Set.Make (String)
 module SymbolMap = Map.Make (String)
@@ -235,10 +236,7 @@ module Core = struct
     | Add of neutral_value * weak_value
     | Do of eff
 
-  let empty_env = {
-    handlers = SMap.empty;
-    values = SMap.empty;
-  }
+  let empty_env = {handlers = SMap.empty; values = SMap.empty}
 
   exception Stuck
 
@@ -837,11 +835,13 @@ module Type = struct
   let equal_value ctx = equal_value ctx ctx
   let equal_comp ctx = equal_comp ctx ctx
 
-  exception TypeError
+  exception TypeError of string
 
-  let err_unless b =
+  let type_error s = raise (TypeError s)
+
+  let type_error_unless b s =
     if not b then
-      raise TypeError
+      type_error s
 
   let rec check_value (ctx : context) (ty : value_ty)
       (v : Syntax.value_ty) : bool =
@@ -919,16 +919,18 @@ module Type = struct
       then
         ValUniv i
       else
-        raise TypeError
+        Fmt.str "Expected U (%a) to have CompUniv type"
+          Syntax.Pretty.pp_comp x
+        |> type_error
     | Syntax.Thunk t ->
       let t, es = infer_comp ctx t in
       U (es, t)
     | ( Syntax.Refl
       | Syntax.Pair (_, _)
       | Syntax.Symbol _ | Syntax.Sigma _ | Syntax.Eq _ ) as v ->
-      Fmt.pf Fmt.stderr "don't know how to infer value %a"
-        Syntax.Pretty.pp_value v;
-      raise TypeError
+      Fmt.str "don't know how to infer value %a"
+        Syntax.Pretty.pp_value v
+      |> type_error
     | Syntax.SymbolSet _ ->
       ValUniv (DeptyZ3.mk_const_univ ctx.z3_ctx 1)
 
@@ -940,12 +942,19 @@ module Type = struct
     | Syntax.F a -> begin
       match infer_value ctx a with
       | ValUniv i -> CompUniv i, DeptyZ3.mk_pure_fx ctx.z3_ctx
-      | _ -> raise TypeError
+      | ty ->
+        Fmt.str "Expected %a to have type ValUniv instead of %a"
+          Syntax.Pretty.pp_value a Syntax.Pretty.pp_value
+          (to_syntax_value ctx ty)
+        |> type_error
     end
     | Syntax.Pi (xs, t) ->
       let folder (u_max, ctx) (x, ty) =
         let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
-        err_unless (check_value ctx (ValUniv u) ty);
+        type_error_unless (check_value ctx (ValUniv u) ty)
+        @@ Fmt.str
+             "Expected Pi domain type %a to have type ValUniv"
+             Syntax.Pretty.pp_value ty;
         let ty' = from_syntax_value ctx ty in
         ( DeptyZ3.mk_max_univ ctx.z3_ctx u u_max,
           {ctx with ty_ctx = SMap.add x ty' ctx.ty_ctx} )
@@ -953,12 +962,19 @@ module Type = struct
       let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
       let u_max, ctx' = List.fold_left folder (u, ctx) xs in
       let fx = DeptyZ3.mk_var_fx ctx.z3_ctx in
-      err_unless (check_comp ctx' (CompUniv u) fx t);
+      type_error_unless (check_comp ctx' (CompUniv u) fx t)
+      @@ Fmt.str
+           "Expected Pi codomain type %a to have type CompUniv"
+           Syntax.Pretty.pp_comp t;
       CompUniv u_max, fx
     | Syntax.Force v -> begin
       match infer_value ctx v with
       | U (e, x) -> x, e
-      | _ -> raise TypeError
+      | ty ->
+        Fmt.str "Expected %a to have type U (...) instead of %a"
+          Syntax.Pretty.pp_value v Syntax.Pretty.pp_value
+          (to_syntax_value ctx ty)
+        |> type_error
     end
     | Syntax.Return v ->
       ( F (infer_value ctx v),
@@ -975,7 +991,10 @@ module Type = struct
         in
         ty, DeptyZ3.mk_union_fx ctx.z3_ctx fx fx'
       else
-        raise TypeError
+        Fmt.str "Expected %a to have type %a"
+          Syntax.Pretty.pp_comp t Syntax.Pretty.pp_comp
+          (Syntax.F a)
+        |> type_error
     | Syntax.DLet (x, a, t, u) ->
       let a' = from_syntax_value ctx a in
       let fx = DeptyZ3.mk_var_fx ctx.z3_ctx in
@@ -987,11 +1006,16 @@ module Type = struct
         ( Let (x, a', from_syntax_comp ctx' t, ty),
           DeptyZ3.mk_union_fx ctx.z3_ctx fx fx' )
       else
-        raise TypeError
+        Fmt.str "Expected %a to have type %a"
+          Syntax.Pretty.pp_comp t Syntax.Pretty.pp_comp
+          (Syntax.F a)
+        |> type_error
     | Syntax.Lam (xs, t) ->
       let folder ctx (x, ty) =
         let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
-        err_unless (check_value ctx (ValUniv u) ty);
+        type_error_unless (check_value ctx (ValUniv u) ty)
+        @@ Fmt.str "Expected %a to have type ValUniv"
+             Syntax.Pretty.pp_value ty;
         let ty' = from_syntax_value ctx ty in
         {ctx with ty_ctx = SMap.add x ty' ctx.ty_ctx}, (x, ty')
       in
@@ -1010,22 +1034,33 @@ module Type = struct
                xs vs ->
         let ty, fx' = t (List.map (Core.resolve ctx.env) vs) in
         ty, DeptyZ3.mk_union_fx ctx.z3_ctx fx fx'
-      | _ -> raise TypeError
+      | ty, _fx ->
+        Fmt.str
+          "Expected applicand %a to have Pi type instead of %a"
+          Syntax.Pretty.pp_comp t Syntax.Pretty.pp_comp
+          (to_syntax_comp ctx ty)
+        |> type_error
     end
     | Syntax.RecSym (v, x, ts) ->
-      let ss =
+      let symbols =
         SymbolMap.to_list ts |> List.map fst
         |> SymbolSet.of_list
       in
-      let ss = SymbolSet ss in
-      err_unless (check_value ctx ss v);
+      let ss = SymbolSet symbols in
+      type_error_unless (check_value ctx ss v)
+      @@ Fmt.str
+           "Expected RecSym disciminant %a to have type %a"
+           Syntax.Pretty.pp_value v Syntax.Pretty.pp_value
+           (Syntax.SymbolSet symbols);
       let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
       (* The motive should be effectualy pure *)
       let m_fx = DeptyZ3.mk_pure_fx ctx.z3_ctx in
-      err_unless
+      type_error_unless
         (check_comp ctx
            (Pi (["_", ss], fun _ -> CompUniv u, m_fx))
-           m_fx x);
+           m_fx x)
+        "<Error message in RecSym that needs to be more \
+         detailed>";
       let x = Core.reduce ctx.env x in
       let x vs =
         Core.apply x vs |> Core.quote_comp
@@ -1036,13 +1071,15 @@ module Type = struct
          - collect the effects of each branch and union them together
          - introduce first class effects and have an "effect motive" *)
       let b_fx = DeptyZ3.mk_var_fx ctx.z3_ctx in
-      err_unless
+      type_error_unless
         begin
           let check_branch s t =
             check_comp ctx (x [Core.Symbol s]) b_fx t
           in
           SymbolMap.for_all check_branch ts
-        end;
+        end
+        "<Error message in RecSym that needs to be more \
+         detailed>";
       x [Core.resolve ctx.env v], b_fx
     | Syntax.RecEq (v, x, t) -> begin
       match infer_value ctx v with
@@ -1050,7 +1087,10 @@ module Type = struct
         let x_domain y =
           match y with
           | [y] -> Eq (a, w1, y)
-          | _ -> raise TypeError
+          | _ ->
+            type_error
+              "<Error message in RecEq that needs to be more \
+               detailed>"
         in
         let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
         (* motive is effectually pure *)
@@ -1064,15 +1104,24 @@ module Type = struct
                       fun _ -> CompUniv u, pure ),
                   pure ) )
         in
-        err_unless (check_comp ctx x_ty pure x);
+        type_error_unless
+          (check_comp ctx x_ty pure x)
+          "<Error message in RecEq that needs to be more \
+           detailed>";
         let x = Core.reduce ctx.env x in
         let x vs =
           Core.apply x vs |> Core.quote_comp
           |> from_syntax_comp ctx
         in
-        err_unless (check_comp ctx (x [w1; Refl]) pure t);
+        type_error_unless
+          (check_comp ctx (x [w1; Refl]) pure t)
+          "<Error message in RecEq that needs to be more \
+           detailed>";
         x [w2; Core.resolve ctx.env v], pure
-      | _ -> raise TypeError
+      | _ ->
+        type_error
+          "<Error message in RecEq that needs to be more \
+           detailed>"
     end
     | Syntax.RecSigma (v, x, t) -> begin
       match infer_value ctx v with
@@ -1080,17 +1129,19 @@ module Type = struct
         let u = DeptyZ3.mk_var_univ ctx.z3_ctx in
         (* motive is effectually pure *)
         let x_fx = DeptyZ3.mk_pure_fx ctx.z3_ctx in
-        err_unless
+        type_error_unless
           (check_comp ctx
              (Pi (["_", d], fun _ -> CompUniv u, x_fx))
-             x_fx x);
+             x_fx x)
+          "<Error message in RecSigma that needs to be more \
+           detailed>";
         let x = Core.reduce ctx.env x in
         let x vs =
           Core.apply x vs |> Core.quote_comp
           |> from_syntax_comp ctx
         in
         let fx = DeptyZ3.mk_var_fx ctx.z3_ctx in
-        err_unless
+        type_error_unless
           begin
             check_comp ctx
               (Pi
@@ -1098,17 +1149,25 @@ module Type = struct
                    fun v ->
                      match v with
                      | [x'; y'] -> x [Core.Pair (x', y')], x_fx
-                     | _ -> raise TypeError ))
+                     | _ ->
+                       type_error
+                         "<Error message in RecSigma that \
+                          needs to be more detailed>" ))
               fx t
-          end;
+          end
+          "<Error message in RecSigma that needs to be more \
+           detailed>";
         x [Core.resolve ctx.env v], fx
-      | _ -> raise TypeError
+      | _ ->
+        type_error
+          "<Error message in RecSigma that needs to be more \
+           detailed>"
     end
     | Syntax.Add (u, v) ->
       if check_value ctx IntTy u && check_value ctx IntTy v then
         F IntTy, DeptyZ3.mk_pure_fx ctx.z3_ctx
       else
-        raise TypeError
+        type_error "Expected Add children to have type IntTy"
     | Syntax.Do e ->
       let fx = DeptyZ3.mk_singleton_fx ctx.z3_ctx e in
       let env, t = SMap.find e ctx.env.handlers in
@@ -1136,8 +1195,8 @@ end
 let hello = "hello"
 
 include Syntax
-let reduce c =
-  Core.reduce Core.empty_env c |> Core.quote_comp
+
+let reduce c = Core.reduce Core.empty_env c |> Core.quote_comp
 
 type type_system = {
   check_type_comp: comp_ty * fx -> comp -> bool;
@@ -1147,7 +1206,6 @@ type type_system = {
 }
 
 let mk_type_system all_fx =
-
   let check_type_comp (ty, fx) c =
     let ctx = Type.mk_context all_fx in
     let fx = DeptyZ3.mk_const_fx ctx.z3_ctx fx in
@@ -1158,7 +1216,8 @@ let mk_type_system all_fx =
   let infer_type_comp c =
     let ctx = Type.mk_context all_fx in
     let ty, fx = Type.infer_comp ctx c in
-    Type.to_syntax_comp ctx ty, DeptyZ3.fx_to_string_list ctx.z3_ctx fx
+    ( Type.to_syntax_comp ctx ty,
+      DeptyZ3.fx_to_string_list ctx.z3_ctx fx )
   in
 
   let check_type_value v ty =
@@ -1173,7 +1232,12 @@ let mk_type_system all_fx =
     Type.to_syntax_value ctx ty
   in
 
-  {check_type_comp; infer_type_comp; check_type_value; infer_type_value}
+  {
+    check_type_comp;
+    infer_type_comp;
+    check_type_value;
+    infer_type_value;
+  }
 
 let equal_comp a b =
   let a = Core.reduce Core.empty_env a in
